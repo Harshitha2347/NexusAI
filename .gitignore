@@ -1,0 +1,70 @@
+# =========================
+# Python
+# =========================
+backend/.venv/
+backend/__pycache__/
+backend/*.py[cod]
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Environment variables
+backend/.env
+.env
+
+# SQLite databases
+backend/*.db
+backend/*.sqlite3
+
+# Logs
+*.log
+
+# =========================
+# Node / React
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# npm/yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Build / Cache
+# =========================
+*.egg-info/
+.eggs/
+build/
+dist/
+.cache/
+
+# =========================
+# Secrets
+# =========================
+*.pem
+*.key
+*.crt
+
+# =========================
+# Misc
+# =========================
+coverage.xml
