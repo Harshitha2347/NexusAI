@@ -1,6 +1,8 @@
 import axios from "axios"
 
-const api=axios.create({baseURL:"/api"})
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+})
 
 api.interceptors.request.use(config=>{
     const token=localStorage.getItem("token")
@@ -217,7 +219,7 @@ function authHeaders(){
 export const streamAPI={
     send:(conversationId:string,message:string)=>
         readSSE(
-            fetch("/api/chat/stream",{
+            fetch(`${import.meta.env.VITE_API_URL}/chat/stream`,{
                 method:"POST",
                 headers:authHeaders(),
                 body:JSON.stringify({
@@ -229,7 +231,7 @@ export const streamAPI={
 
     edit:(messageId:string,content:string)=>
         readSSE(
-            fetch(`/api/messages/${messageId}`,{
+            fetch(`${import.meta.env.VITE_API_URL}/messages/${messageId}`,{
                 method:"PUT",
                 headers:authHeaders(),
                 body:JSON.stringify({content}),
@@ -238,7 +240,7 @@ export const streamAPI={
 
     regenerate:(messageId:string)=>
         readSSE(
-            fetch(`/api/messages/${messageId}/regenerate`,{
+            fetch(`${import.meta.env.VITE_API_URL}/messages/${messageId}/regenerate`,{
                 method:"POST",
                 headers:authHeaders(),
             }),
