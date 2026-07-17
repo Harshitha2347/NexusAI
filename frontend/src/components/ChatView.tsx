@@ -19,9 +19,10 @@ export default function ChatView({ onMenuClick }: Props) {
   const [error, setError] = useState('')
   const [searchStatus, setSearchStatus]= useState<string | null>(null)
   const [shareCopied, setShareCopied]= useState(false)
+  const [scrollTick, setScrollTick] = useState(0)
   const bottomRef =useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const isNearBottomRef = useRef(true)
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  const pendingScrollRef = useRef<'top' | 'bottom' | null>(null)
   const textareaRef= useRef<HTMLTextAreaElement>(null)
 
   const tts= useSpeechOutput()
@@ -29,35 +30,24 @@ export default function ChatView({ onMenuClick }: Props) {
 
   const activeConvo = convos.find(c => c.id === activeId)
 
-  // Load messages when switching conversations
   useEffect(() => {
-    if (activeId) { loadMessages(activeId); setError('') }
+    if (activeId) {
+      pendingScrollRef.current = 'bottom'
+      loadMessages(activeId)
+      setError('')
+    }
   }, [activeId])
 
   const currentMsgs = (activeId ? messages[activeId] : []) ?? []
-  const lastMsg = currentMsgs[currentMsgs.length - 1]
 
-  // Auto-scroll — follows the reply as it streams in (keyed off the last
-  // message's own content, not just message count, so it tracks every delta)
-  // and lands right at its end. Only runs while the user is already near the
-  // bottom, so scrolling up to read something doesn't get yanked back down.
   useEffect(() => {
-    if (isNearBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    if (pendingScrollRef.current === 'top') {
+      anchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } else if (pendingScrollRef.current === 'bottom') {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
     }
-  }, [currentMsgs.length, lastMsg?.content, streaming])
-
-  const handleScroll = useCallback(() => {
-    const el = scrollContainerRef.current
-    if (!el) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    isNearBottomRef.current = distanceFromBottom < 120
-  }, [])
-
-  // Always snap to bottom when switching conversations
-  useEffect(() => {
-    isNearBottomRef.current = true
-  }, [activeId])
+    pendingScrollRef.current = null
+  }, [currentMsgs.length, scrollTick])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -104,12 +94,13 @@ export default function ChatView({ onMenuClick }: Props) {
     if (!input.trim() || !activeId || streaming) return
     const text = input.trim()
     setInput(''); setError('')
-    isNearBottomRef.current = true
 
     const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: text, created_at: new Date().toISOString() }
     appendMessage(activeId, userMsg)
     const placeholder: Message = { id: crypto.randomUUID(), role: 'assistant', content: '', created_at: new Date().toISOString() }
     appendMessage(activeId, placeholder)
+    pendingScrollRef.current = 'top'
+    setScrollTick(t => t + 1)
     startStream()
 
     await drainStream(activeId, streamAPI.send(activeId, text))
@@ -118,10 +109,11 @@ export default function ChatView({ onMenuClick }: Props) {
   const handleEdit = useCallback(async (index: number, messageId: string, newContent: string) => {
     if (!activeId || streaming) return
     setError('')
-    isNearBottomRef.current = true
     const tempUser: Message = { id: crypto.randomUUID(), role: 'user', content: newContent, created_at: new Date().toISOString() }
     const placeholder: Message = { id: crypto.randomUUID(), role: 'assistant', content: '', created_at: new Date().toISOString() }
     replaceFrom(activeId, index, [tempUser, placeholder])
+    pendingScrollRef.current = 'top'
+    setScrollTick(t => t + 1)
     startStream()
 
     await drainStream(activeId, streamAPI.edit(messageId, newContent), (evt) => {
@@ -136,9 +128,10 @@ export default function ChatView({ onMenuClick }: Props) {
   const handleRegenerate = useCallback(async (index: number, messageId: string) => {
     if (!activeId || streaming) return
     setError('')
-    isNearBottomRef.current = true
     const placeholder: Message = { id: crypto.randomUUID(), role: 'assistant', content: '', created_at: new Date().toISOString() }
     replaceFrom(activeId, index, [placeholder])
+    pendingScrollRef.current = 'top'
+    setScrollTick(t => t + 1)
     startStream()
     await drainStream(activeId, streamAPI.regenerate(messageId))
   }, [activeId, streaming, replaceFrom, startStream, drainStream])
@@ -170,8 +163,6 @@ export default function ChatView({ onMenuClick }: Props) {
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
-
-  // ── Empty state ────────────────────────────────────────────────────────────
   if (!activeId) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4">
@@ -195,6 +186,7 @@ export default function ChatView({ onMenuClick }: Props) {
 
   const lastAssistantIndex = [...currentMsgs].reverse().findIndex(m => m.role === 'assistant')
   const lastAssistantIdx = lastAssistantIndex === -1 ? -1 : currentMsgs.length - 1 - lastAssistantIndex
+  const anchorIndex = currentMsgs.length - 2
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -239,25 +231,32 @@ export default function ChatView({ onMenuClick }: Props) {
       )}
 
       {/* Messages */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {currentMsgs.length === 0 && !streaming && (
           <p className="text-center text-base py-8" style={{ color: 'var(--text-secondary)' }}>
             Send a message to start the conversation
           </p>
         )}
-        {currentMsgs.map((msg, i) => (
-          <MessageBubble key={msg.id} msg={msg}
-            isStreaming={streaming && i === currentMsgs.length - 1 && msg.role === 'assistant'}
-            voiceSettings={tts.settings}
-            speaking={tts.speaking}
-            onReplay={tts.replay}
-            onStopSpeech={tts.stop}
-            canRegenerate={!streaming && msg.role === 'assistant' && i === lastAssistantIdx}
-            onRegenerate={() => handleRegenerate(i, msg.id)}
-            onEdit={msg.role === 'user' ? (content) => handleEdit(i, msg.id, content) : undefined}
-            onSwitchBranch={(msg.branch_count ?? 1) > 1 ? (dir) => handleSwitchBranch(msg.id, dir) : undefined}
-          />
-        ))}
+        {currentMsgs.map((msg, i) => {
+          const bubble = (
+            <MessageBubble msg={msg}
+              isStreaming={streaming && i === currentMsgs.length - 1 && msg.role === 'assistant'}
+              voiceSettings={tts.settings}
+              speaking={tts.speaking}
+              onReplay={tts.replay}
+              onStopSpeech={tts.stop}
+              canRegenerate={!streaming && msg.role === 'assistant' && i === lastAssistantIdx}
+              onRegenerate={() => handleRegenerate(i, msg.id)}
+              onEdit={msg.role === 'user' ? (content) => handleEdit(i, msg.id, content) : undefined}
+              onSwitchBranch={(msg.branch_count ?? 1) > 1 ? (dir) => handleSwitchBranch(msg.id, dir) : undefined}
+            />
+          )
+          // The message right before the currently-active/most-recent assistant
+          // reply is what we scroll to the top of the view (see anchorRef above).
+          return i === anchorIndex
+            ? <div key={msg.id} ref={anchorRef}>{bubble}</div>
+            : <div key={msg.id}>{bubble}</div>
+        })}
         {searchStatus && (
           <div className="flex items-center gap-2 text-sm animate-fade-in" style={{ color: 'var(--accent-2)' }}>
             <Search size={13} className="animate-pulse" /> Searching the web for “{searchStatus}”…
