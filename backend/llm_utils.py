@@ -11,10 +11,13 @@ TOOLS=[
         "function":{
             "name":"web_search",
             "description":(
-                "Search the live web. Use this when the user's question needs "
-                "real-time, recent, or external information you would not reliably know "
-                "(current events, prices, scores, releases, weather, facts about niche or "
-                "very recent topics, etc)."
+                "Search the live web. Use this ONLY when the question needs current, "
+                "time-sensitive, or live information you would not reliably know — "
+                "e.g. weather, stock/crypto prices, sports scores, breaking news, "
+                "today's/this week's events, or a specific fast-changing fact. "
+                "Do NOT use this for definitions, explanations, or general knowledge about "
+                "well-known concepts, technologies, or companies (e.g. 'what is Google', "
+                "'explain RAG', 'what is a REST API') — answer those directly instead."
             ),
             "parameters":{
                 "type":"object",
@@ -38,9 +41,12 @@ TOOLS=[
         "function":{
             "name":"no_search_needed",
             "description":(
-                "Use this when the question does NOT need live web search — general "
-                "knowledge, coding help, writing, math, or anything you can already "
-                "answer confidently without current/external information."
+                "Use this for everything that isn't live/time-sensitive — definitions, "
+                "explanations of concepts, technologies, or companies (even ones like "
+                "'Google' or 'RAG'), coding help, math, writing, general knowledge, "
+                "opinions, or anything you can already answer confidently. This is the "
+                "default choice; only pick web_search if you truly need current or "
+                "external information."
             ),
             "parameters":{"type":"object","properties":{}},
         },
@@ -66,6 +72,21 @@ _REALTIME_PATTERNS=re.compile(
 )
 
 
+ROUTER_SYSTEM_PROMPT=(
+    "You are a routing classifier, not a conversational assistant. Look only at the "
+    "user's latest message (using earlier messages for context if needed) and decide "
+    "whether answering it truly requires a live web search.\n\n"
+    "Call no_search_needed for: definitions, explanations of concepts, technologies, or "
+    "companies — even famous or frequently-updated ones (e.g. 'what is Google', "
+    "'explain RAG', 'what is a REST API'), coding help, math, writing, general "
+    "knowledge, opinions, and anything else you can already answer confidently.\n\n"
+    "Call web_search only when the question needs information that is current, "
+    "time-sensitive, or genuinely live — weather, prices, scores, breaking news, "
+    "today's/this week's events, or a specific fast-changing fact.\n\n"
+    "When in doubt, default to no_search_needed."
+)
+
+
 def looks_realtime(text:str)->bool:
     return bool(_REALTIME_PATTERNS.search(text or ""))
 
@@ -87,13 +108,13 @@ async def decide_and_search(
         decision=await groq.chat.completions.create(
             model=model,
             messages=[
-                {"role":"system","content":system_prompt},
+                {"role":"system","content":ROUTER_SYSTEM_PROMPT},
                 *history,
             ],
             tools=TOOLS,
             tool_choice="required",
             max_tokens=300,
-            temperature=0.3,
+            temperature=0,
         )
 
         msg=decision.choices[0].message

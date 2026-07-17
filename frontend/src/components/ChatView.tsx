@@ -20,6 +20,8 @@ export default function ChatView({ onMenuClick }: Props) {
   const [searchStatus, setSearchStatus]= useState<string | null>(null)
   const [shareCopied, setShareCopied]= useState(false)
   const bottomRef =useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isNearBottomRef = useRef(true)
   const textareaRef= useRef<HTMLTextAreaElement>(null)
 
   const tts= useSpeechOutput()
@@ -27,17 +29,28 @@ export default function ChatView({ onMenuClick }: Props) {
 
   const activeConvo = convos.find(c => c.id === activeId)
 
-  // Load messages when switching conversations
   useEffect(() => {
     if (activeId) { loadMessages(activeId); setError('') }
   }, [activeId])
 
-  // Auto-scroll
+  
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages[activeId ?? '']?.length, streaming])
 
-  // Auto-resize textarea
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    isNearBottomRef.current = distanceFromBottom < 120
+  }, [])
+
+  useEffect(() => {
+    isNearBottomRef.current = true
+  }, [activeId])
+
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -84,6 +97,7 @@ export default function ChatView({ onMenuClick }: Props) {
     if (!input.trim() || !activeId || streaming) return
     const text = input.trim()
     setInput(''); setError('')
+    isNearBottomRef.current = true
 
     const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: text, created_at: new Date().toISOString() }
     appendMessage(activeId, userMsg)
@@ -97,6 +111,7 @@ export default function ChatView({ onMenuClick }: Props) {
   const handleEdit = useCallback(async (index: number, messageId: string, newContent: string) => {
     if (!activeId || streaming) return
     setError('')
+    isNearBottomRef.current = true
     const tempUser: Message = { id: crypto.randomUUID(), role: 'user', content: newContent, created_at: new Date().toISOString() }
     const placeholder: Message = { id: crypto.randomUUID(), role: 'assistant', content: '', created_at: new Date().toISOString() }
     replaceFrom(activeId, index, [tempUser, placeholder])
@@ -114,6 +129,7 @@ export default function ChatView({ onMenuClick }: Props) {
   const handleRegenerate = useCallback(async (index: number, messageId: string) => {
     if (!activeId || streaming) return
     setError('')
+    isNearBottomRef.current = true
     const placeholder: Message = { id: crypto.randomUUID(), role: 'assistant', content: '', created_at: new Date().toISOString() }
     replaceFrom(activeId, index, [placeholder])
     startStream()
@@ -148,7 +164,6 @@ export default function ChatView({ onMenuClick }: Props) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  // ── Empty state ────────────────────────────────────────────────────────────
   if (!activeId) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4">
@@ -216,7 +231,7 @@ export default function ChatView({ onMenuClick }: Props) {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {currentMsgs.length === 0 && !streaming && (
           <p className="text-center text-base py-8" style={{ color: 'var(--text-secondary)' }}>
             Send a message to start the conversation
