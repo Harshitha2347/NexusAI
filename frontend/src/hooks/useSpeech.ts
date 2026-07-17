@@ -1,7 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+
+// ── Speech Recognition (voice → text) ────────────────────────────────────────
+
 const SpeechRecognition =
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
+// The Web Speech API only works in secure contexts (https, or localhost) and
+// only in Chromium-based browsers — Firefox and Safari don't implement it.
 const isSecureContext = typeof window !== 'undefined' ? window.isSecureContext : true
 
 function describeSpeechError(code: string): string {
@@ -70,16 +75,17 @@ export function useSpeechInput(onResult: (text: string) => void) {
   return { listening, supported, error, clearError: () => setError(''), start, stop, toggle: listening ? stop : start }
 }
 
+// ── Speech Synthesis (text → voice) ──────────────────────────────────────────
+
 export interface VoiceSettings {
   enabled: boolean
   voice: SpeechSynthesisVoice | null
   rate: number
-  pitch: number
 }
 
 export function useSpeechOutput() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [settings, setSettings] = useState<VoiceSettings>({ enabled: false, voice: null, rate: 1, pitch: 1 })
+  const [settings, setSettings] = useState<VoiceSettings>({ enabled: false, voice: null, rate: 1 })
   const [speaking, setSpeaking] = useState(false)
   const supported = typeof speechSynthesis !== 'undefined'
 
@@ -101,7 +107,6 @@ export function useSpeechOutput() {
     const utt = new SpeechSynthesisUtterance(clean)
     utt.voice  = settings.voice ?? voices[0] ?? null
     utt.rate   = settings.rate
-    utt.pitch  = settings.pitch
     utt.onstart = () => setSpeaking(true)
     utt.onend   = () => setSpeaking(false)
     utt.onerror = () => setSpeaking(false)

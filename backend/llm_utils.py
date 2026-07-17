@@ -11,19 +11,22 @@ TOOLS=[
         "function":{
             "name":"web_search",
             "description":(
-                "Search the live web for information. Call this whenever the answer "
-                "depends on anything that could have changed since your training data was "
-                "collected, or that you are not fully certain is still accurate right now — "
-                "this includes current events, prices, scores, schedules, recent releases, "
-                "and who currently holds any position, role, or title. If there is any real "
-                "chance your answer is stale, prefer calling this over guessing."
+                "Search the live web. Use this when the user's question needs "
+                "real-time, recent, or external information you would not reliably know "
+                "(current events, prices, scores, releases, weather, facts about niche or "
+                "very recent topics, etc)."
             ),
             "parameters":{
                 "type":"object",
                 "properties":{
                     "query":{
                         "type":"string",
-                        "description":"The search query to look up.",
+                        "description":(
+                            "The search query. Make it self-contained — resolve pronouns "
+                            "and vague references using the conversation, and if the user's "
+                            "location is known from the conversation, include it (e.g. "
+                            "'weather in <city> today')."
+                        ),
                     }
                 },
                 "required":["query"],
@@ -33,16 +36,38 @@ TOOLS=[
     {
         "type":"function",
         "function":{
-            "name":"answer_directly",
+            "name":"no_search_needed",
             "description":(
-                "Use this when you can answer the question fully and confidently from what "
-                "you already know, with no meaningful risk that the answer has changed or "
-                "gone stale since your training data was collected."
+                "Use this when the question does NOT need live web search — general "
+                "knowledge, coding help, writing, math, or anything you can already "
+                "answer confidently without current/external information."
             ),
             "parameters":{"type":"object","properties":{}},
         },
     },
 ]
+
+_REALTIME_PATTERNS=re.compile(
+    r"\b("
+    r"today|tonight|yesterday|tomorrow|"
+    r"latest|newest|current(ly)?|right now|up.?to.?date|"
+    r"this (week|month|year)|"
+    r"news|breaking|headline|happening|happenings|going on|"
+    r"score|scores|standings|result[s]?\s+of\s+the|"
+    r"weather|forecast|temperature\s+in|"
+    r"stock\s+price|share\s+price|exchange\s+rate|crypto\s+price|"
+    r"who (is|was|are)\s+the\s+(current|new|latest)|"
+    r"release\s+date|when\s+(is|was|does|will)|"
+    r"upcoming|recently|just\s+(released|announced|launched|happened)|"
+    r"what'?s\s+new|"
+    r"202[4-9]"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def looks_realtime(text:str)->bool:
+    return bool(_REALTIME_PATTERNS.search(text or ""))
 
 
 async def decide_and_search(
@@ -93,6 +118,18 @@ async def decide_and_search(
     except Exception:
         pass
 
+    if last_user_text and looks_realtime(last_user_text):
+        try:
+            results=await web_search(last_user_text)
+            if results and results[0].get("title")!="Search failed":
+                return (
+                    format_results_for_context(results),
+                    True,
+                    last_user_text,
+                )
+        except Exception:
+            pass
+
     return None,False,None
 
 
@@ -108,30 +145,22 @@ async def generate_title(
             model=model,
             messages=[
                 {
-    "role": "system",
-    "content": (
-        "You generate concise, descriptive titles for conversations. Read the "
-        "conversation below and reply with ONLY a 3-6 word title that best "
-        "captures its primary topic.\n\n"
-        "Requirements:\n"
-        "- Output ONLY the title.\n"
-        "- Do not use quotes, markdown, emojis, numbering, prefixes (such as "
-        "'Title:'), or explanations.\n"
-        "- Do not end the title with punctuation.\n"
-        "- Make the title specific, descriptive, and informative rather than generic.\n"
-        "- Base the title primarily on the user's intent. If that is unclear, "
-        "use the main topic of the conversation.\n"
-        "- If multiple topics are discussed, choose the most significant or "
-        "most recent one.\n"
-        "- When a term has multiple possible meanings, infer the most likely technology related "
-        "meaning from the conversation. If there is insufficient context to "
-        "disambiguate, prefer the more domain-specific interpretation.\n"
-        "- Preserve important names, products, technologies, or concepts when "
-        "they are central to the conversation.\n"
-        "- Avoid unnecessary filler words or overly broad titles.\n"
-        "- Ensure the title is natural, readable, and suitable as a chat history label."
-    ),
-},
+                    "role":"system",
+                    "content":(
+                        "You write short chat titles. Read the exchange below and reply with "
+                        "ONLY a 3-6 word title capturing its specific topic — no quotes, no "
+                        "trailing punctuation, no prefix like 'Title:', no generic titles like "
+                        "'Chat about X' or 'Conversation'. Be concrete and specific.\n\n"
+                        "If the user's message contains an ambiguous acronym or abbreviation that "
+                        "has both a general/everyday meaning and a software/data-science/ML meaning "
+                        "(e.g. CNN, GAN, NLP), title it using the software/data-science/ML meaning "
+                        "by default — even if the assistant's reply answered using the other, more "
+                        "general meaning. This only affects how you name the title, not anything else.\n\n"
+                        "Example: user asks about fixing a Python KeyError -> `Fixing a Python KeyError Bug`\n"
+                        "Example: user asks for pasta recipes -> `Quick Weeknight Pasta Recipes`\n"
+                        "Example: user writes 'cnn' -> `Convolutional Neural Network Basics`"
+                    ),
+                },
                 {
                     "role":"user",
                     "content":(

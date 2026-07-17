@@ -46,17 +46,6 @@ export default function VoicePanel({ voices, settings, onUpdate, onClose }: Prop
             onChange={e => onUpdate({ rate: parseFloat(e.target.value) })}
             className="w-full accent-purple-500 h-1" />
         </div>
-
-        {/* Pitch */}
-        <div>
-          <div className="flex justify-between mb-1">
-            <label className="text-sm" style={{ color: 'var(--text-secondary)' }}>Pitch</label>
-            <span className="text-sm" style={{ color: 'var(--accent)' }}>{settings.pitch.toFixed(1)}</span>
-          </div>
-          <input type="range" min="0.5" max="2" step="0.1" value={settings.pitch}
-            onChange={e => onUpdate({ pitch: parseFloat(e.target.value) })}
-            className="w-full accent-purple-500 h-1" />
-        </div>
       </div>
     </div>
   )
